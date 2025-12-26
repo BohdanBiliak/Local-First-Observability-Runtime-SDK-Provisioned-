@@ -7,29 +7,36 @@ Event-driven microservices architecture for local observability with clear separ
 ## Components
 
 ### API Gateway (NestJS)
+
 **Responsibility**: HTTP interface and service orchestration
 
 **Patterns**:
+
 - **Dependency Injection**: NestJS modules for loose coupling
 - **Facade**: Simplifies complex observability operations
 - **Graceful Shutdown**: Handles SIGTERM/SIGINT for safe container stops
 
 ### Collector (Rust)
+
 **Responsibility**: High-throughput log ingestion and parsing
 
 **Patterns**:
+
 - **Adapter**: Transforms various log formats to unified schema
 - **Single Responsibility**: Focused on collection, not storage
 - **Strategy**: Pluggable parsers for different log formats
 
 ### Message Broker (RabbitMQ)
+
 **Responsibility**: Async event streaming between services
 
 **Patterns**:
+
 - **Observer**: Pub/sub for decoupled event handling
 - **Producer-Consumer**: Buffering for traffic spikes
 
 ### Storage Layer
+
 **Loki**: Time-series log storage  
 **Prometheus**: Metrics and alerting
 

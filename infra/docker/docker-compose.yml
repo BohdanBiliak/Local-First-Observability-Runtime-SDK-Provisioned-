@@ -6,8 +6,8 @@ services:
     image: rabbitmq:3.12-management-alpine
     container_name: obs-rabbitmq
     ports:
-      - "${RABBITMQ_PORT:-5672}:5672"   # AMQP protocol
-      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672" # Management UI
+      - '${RABBITMQ_PORT:-5672}:5672' # AMQP protocol
+      - '${RABBITMQ_MANAGEMENT_PORT:-15672}:15672' # Management UI
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
@@ -26,7 +26,7 @@ services:
     image: grafana/loki:2.9.3
     container_name: obs-loki
     ports:
-      - "${LOKI_PORT:-3100}:3100"
+      - '${LOKI_PORT:-3100}:3100'
     command: -config.file=/etc/loki/local-config.yaml
     volumes:
       - loki_data:/loki
@@ -43,7 +43,7 @@ services:
     image: prom/prometheus:v2.48.1
     container_name: obs-prometheus
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - '${PROMETHEUS_PORT:-9090}:9090'
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -65,7 +65,7 @@ services:
     image: grafana/grafana:10.2.3
     container_name: obs-grafana
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - '${GRAFANA_PORT:-3000}:3000'
     environment:
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}

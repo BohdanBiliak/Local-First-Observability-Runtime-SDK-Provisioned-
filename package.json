@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "prepare": "husky install",
+    "install:all": "npm install && npm install --workspaces",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present",
