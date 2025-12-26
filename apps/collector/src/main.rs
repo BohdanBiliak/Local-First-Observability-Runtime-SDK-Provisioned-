@@ -11,6 +11,7 @@ use config::Config;
 use observability_collector::messaging::{
     ChannelProvider, Consumer, HandlerError, MessageHandler, RabbitMqConnection,
 };
+use observability_collector::metrics::{server::start_metrics_server, Metrics};
 
 struct TelemetryHandler;
 
@@ -81,6 +82,15 @@ async fn main() {
     let shutdown = Arc::new(Notify::new());
     let shutdown_clone = shutdown.clone();
 
+    let metrics = Metrics::new().expect("Failed to create metrics");
+
+    let metrics_clone = metrics.clone();
+    tokio::spawn(async move {
+        if let Err(e) = start_metrics_server(metrics_clone, 9090).await {
+            eprintln!("Metrics server error: {}", e);
+        }
+    });
+
     let handler = Arc::new(TelemetryHandler);
     let consumer = Consumer::new(
         channel,
@@ -88,6 +98,7 @@ async fn main() {
         format!("{}-consumer", config.service_name),
         handler,
         shutdown_clone,
+        metrics.clone(),
     );
 
     if let Err(e) = consumer.setup_queues().await {

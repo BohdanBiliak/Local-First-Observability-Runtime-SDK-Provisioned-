@@ -27,5 +27,9 @@ lapin = "2.3"
 async-trait = "0.1"
 futures = "0.3"
 
+# Metrics
+prometheus = "0.13"
+axum = "0.7"
+
 [dev-dependencies]
 

@@ -5,6 +5,7 @@ use tokio::sync::Notify;
 use tracing::{error, info, warn};
 
 use super::handler::{HandlerError, MessageHandler};
+use crate::metrics::Metrics;
 
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY_MS: u64 = 5000;
@@ -16,6 +17,7 @@ pub struct Consumer {
     consumer_tag: String,
     handler: Arc<dyn MessageHandler>,
     shutdown: Arc<Notify>,
+    metrics: Arc<Metrics>,
 }
 
 impl Consumer {
@@ -25,11 +27,13 @@ impl Consumer {
         consumer_tag: String,
         handler: Arc<dyn MessageHandler>,
         shutdown: Arc<Notify>,
+        metrics: Arc<Metrics>,
     ) -> Self {
         Self {
             channel,
             queue_name,
             consumer_tag,
+            metrics,
             handler,
             shutdown,
         }
@@ -133,12 +137,13 @@ impl Consumer {
                 error!(error = %e, queue = %self.queue_name, "Failed to start consumer");
                 ConsumerError::ConsumeFailed(e.to_string())
             })?;
-
         info!(
             queue = %self.queue_name,
             consumer_tag = %self.consumer_tag,
             "Consumer started successfully"
         );
+
+        self.metrics.active_consumers.inc();
 
         loop {
             tokio::select! {
@@ -167,10 +172,10 @@ impl Consumer {
             }
         }
 
+        self.metrics.active_consumers.dec();
         info!(consumer_tag = %self.consumer_tag, "Consumer stopped");
         Ok(())
     }
-
     async fn process_message(&self, delivery: lapin::message::Delivery) {
         let delivery_tag = delivery.delivery_tag;
         let routing_key = delivery.routing_key.clone();
@@ -186,9 +191,21 @@ impl Consumer {
             "Processing message"
         );
 
+        let start = std::time::Instant::now();
         match self.handler.handle(delivery).await {
             Ok(()) => {
-                info!(delivery_tag, retry_count, "Message processed successfully");
+                let duration = start.elapsed().as_secs_f64();
+                info!(delivery_tag, retry_count, duration_ms = duration * 1000.0, "Message processed successfully");
+
+                self.metrics
+                    .messages_processed_total
+                    .with_label_values(&[&self.queue_name, routing_key.as_str()])
+                    .inc();
+
+                self.metrics
+                    .message_processing_duration_seconds
+                    .with_label_values(&[&self.queue_name, "success"])
+                    .observe(duration);
 
                 if let Err(e) = self
                     .channel
@@ -199,6 +216,18 @@ impl Consumer {
                 }
             }
             Err(HandlerError::Transient(err)) => {
+                let duration = start.elapsed().as_secs_f64();
+                
+                self.metrics
+                    .messages_failed_total
+                    .with_label_values(&[&self.queue_name, "transient"])
+                    .inc();
+
+                self.metrics
+                    .message_processing_duration_seconds
+                    .with_label_values(&[&self.queue_name, "transient_error"])
+                    .observe(duration);
+
                 if retry_count >= MAX_RETRIES {
                     error!(
                         delivery_tag,
@@ -206,6 +235,8 @@ impl Consumer {
                         error = %err,
                         "Max retries exceeded, sending to DLQ"
                     );
+
+                    self.metrics.messages_dlq_total.inc();
 
                     if let Err(e) = self
                         .channel
@@ -222,12 +253,28 @@ impl Consumer {
                         "Transient error, scheduling retry"
                     );
 
+                    self.metrics.messages_retried_total.inc();
+
                     if let Err(e) = self.retry_message(delivery_tag, data, properties, retry_count).await {
                         error!(error = %e, delivery_tag, "Failed to schedule retry");
                     }
                 }
             }
             Err(HandlerError::Permanent(err)) => {
+                let duration = start.elapsed().as_secs_f64();
+                
+                self.metrics
+                    .messages_failed_total
+                    .with_label_values(&[&self.queue_name, "permanent"])
+                    .inc();
+
+                self.metrics
+                    .message_processing_duration_seconds
+                    .with_label_values(&[&self.queue_name, "permanent_error"])
+                    .observe(duration);
+
+                self.metrics.messages_dlq_total.inc();
+
                 error!(
                     delivery_tag,
                     error = %err,
