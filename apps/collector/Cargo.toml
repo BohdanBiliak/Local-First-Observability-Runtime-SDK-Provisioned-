@@ -1,0 +1,14 @@
+[package]
+name = "observability-collector"
+version = "0.1.0"
+edition = "2025"
+authors = ["Bohdan Biliak bohdam.biliak.detrox@gmail.com"]
+description = "Telemetry collector service for local observability runtime"
+
+[[bin]]
+name = "collector"
+path = "src/main.rs"
+
+[dependencies]
+[dev-dependencies]
+
