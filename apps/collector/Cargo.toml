@@ -31,5 +31,8 @@ futures = "0.3"
 prometheus = "0.13"
 axum = "0.7"
 
+# UUID generation
+uuid = { version = "1.6", features = ["v4"] }
+
 [dev-dependencies]
 

@@ -1,4 +1,5 @@
 use lapin::{options::*, BasicProperties, Connection, ConnectionProperties};
+use lapin::types::ShortString;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,13 +21,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     
     for (message, description) in messages {
+        let message_id = format!("retry-test-{}", uuid::Uuid::new_v4());
+        let props = BasicProperties::default()
+            .with_message_id(ShortString::from(message_id.clone()));
+        
         channel
             .basic_publish(
                 "",
                 "telemetry",
                 BasicPublishOptions::default(),
                 message.as_bytes(),
-                BasicProperties::default(),
+                props,
             )
             .await?;
         
