@@ -1,22 +1,49 @@
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
+mod config;
+
+use config::Config;
+
 #[tokio::main]
 async fn main() {
     setup_panic_handler();
-    setup_logging();
+    let config = match Config::from_env() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Configuration error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    setup_logging(&config.rust_log);
 
     info!(
         version = env!("CARGO_PKG_VERSION"),
+        service_name = %config.service_name,
         "Observability Collector starting"
+    );
+
+    info!(
+        rabbitmq_url = %config.rabbitmq_url,
+        "Configuration loaded successfully"
     );
 
     info!("Ready to process telemetry events");
 }
 
-fn setup_logging() {
+fn setup_logging(rust_log: &str) {
+    let log_level = match rust_log.to_lowercase().as_str() {
+        "trace" => Level::TRACE,
+        "debug" => Level::DEBUG,
+        "info" => Level::INFO,
+        "warn" => Level::WARN,
+        "error" => Level::ERROR,
+        _ => Level::INFO,
+    };
+
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
+        .with_max_level(log_level)
         .with_target(false)
         .with_thread_ids(true)
         .with_file(true)

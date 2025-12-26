@@ -1,7 +1,7 @@
 [package]
 name = "observability-collector"
 version = "0.1.0"
-edition = "2025"
+edition = "2024"
 authors = ["Bohdan Biliak bohdam.biliak.detrox@gmail.com"]
 description = "Telemetry collector service for local observability runtime"
 
@@ -16,6 +16,9 @@ tokio = { version = "1.35", features = ["full"] }
 # Structured logging and tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Error handling
+thiserror = "1.0"
 
 [dev-dependencies]
 
