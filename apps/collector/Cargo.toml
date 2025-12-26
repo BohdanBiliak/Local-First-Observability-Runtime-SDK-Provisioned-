@@ -23,5 +23,9 @@ thiserror = "1.0"
 # RabbitMQ client
 lapin = "2.3"
 
+# Async trait support
+async-trait = "0.1"
+futures = "0.3"
+
 [dev-dependencies]
 

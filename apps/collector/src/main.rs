@@ -1,10 +1,33 @@
+use std::sync::Arc;
+use async_trait::async_trait;
+use lapin::message::Delivery;
+use tokio::sync::Notify;
 use tracing::{info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
 mod config;
 
 use config::Config;
-use observability_collector::messaging::{ChannelProvider, RabbitMqConnection};
+use observability_collector::messaging::{
+    ChannelProvider, Consumer, HandlerError, MessageHandler, RabbitMqConnection,
+};
+
+struct TelemetryHandler;
+
+#[async_trait]
+impl MessageHandler for TelemetryHandler {
+    async fn handle(&self, delivery: Delivery) -> Result<(), HandlerError> {
+        let payload = String::from_utf8_lossy(&delivery.data);
+        
+        info!(
+            routing_key = delivery.routing_key.as_str(),
+            payload_preview = %payload.chars().take(100).collect::<String>(),
+            "Handling telemetry message"
+        );
+
+        Ok(())
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -47,6 +70,24 @@ async fn main() {
         }
     };
 
+    let shutdown = Arc::new(Notify::new());
+    let shutdown_clone = shutdown.clone();
+
+    let handler = Arc::new(TelemetryHandler);
+    let consumer = Consumer::new(
+        channel,
+        "telemetry".to_string(),
+        format!("{}-consumer", config.service_name),
+        handler,
+        shutdown_clone,
+    );
+
+    let consumer_handle = tokio::spawn(async move {
+        if let Err(e) = consumer.start().await {
+            eprintln!("Consumer error: {}", e);
+        }
+    });
+
     info!("Ready to process telemetry events");
 
     tokio::signal::ctrl_c()
@@ -54,8 +95,16 @@ async fn main() {
         .expect("Failed to listen for shutdown signal");
 
     warn!("Shutdown signal received, cleaning up...");
-    if let Err(e) = ChannelProvider::close_channel(channel).await {
-        eprintln!("Error closing channel: {}", e);
+
+    shutdown.notify_one();
+
+    if let Err(e) = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        consumer_handle,
+    )
+    .await
+    {
+        warn!(error = ?e, "Consumer shutdown timeout");
     }
 
     if let Err(e) = rabbitmq.shutdown().await {

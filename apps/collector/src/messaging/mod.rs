@@ -5,3 +5,5 @@ pub mod handler;
 
 pub use channel::{ChannelError, ChannelProvider};
 pub use connection::{ConnectionError, RabbitMqConnection};
+pub use consumer::{Consumer, ConsumerError};
+pub use handler::{HandlerError, MessageHandler};
