@@ -20,5 +20,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # Error handling
 thiserror = "1.0"
 
+# RabbitMQ client
+lapin = "2.3"
+
 [dev-dependencies]
 

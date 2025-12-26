@@ -1,9 +1,10 @@
-use tracing::{info, Level};
+use tracing::{info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
 mod config;
 
 use config::Config;
+use observability_collector::messaging::RabbitMqConnection;
 
 #[tokio::main]
 async fn main() {
@@ -24,12 +25,30 @@ async fn main() {
         "Observability Collector starting"
     );
 
-    info!(
-        rabbitmq_url = %config.rabbitmq_url,
-        "Configuration loaded successfully"
-    );
+    let rabbitmq = match RabbitMqConnection::connect(config.rabbitmq_url.clone()).await {
+        Ok(conn) => {
+            info!("RabbitMQ connection established");
+            conn
+        }
+        Err(e) => {
+            eprintln!("Failed to connect to RabbitMQ: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     info!("Ready to process telemetry events");
+
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to listen for shutdown signal");
+
+    warn!("Shutdown signal received, cleaning up...");
+
+    if let Err(e) = rabbitmq.shutdown().await {
+        eprintln!("Error during shutdown: {}", e);
+    }
+
+    info!("Observability Collector stopped");
 }
 
 fn setup_logging(rust_log: &str) {
