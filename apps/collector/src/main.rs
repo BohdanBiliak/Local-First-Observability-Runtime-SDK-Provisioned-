@@ -4,7 +4,7 @@ use tracing_subscriber::FmtSubscriber;
 mod config;
 
 use config::Config;
-use observability_collector::messaging::RabbitMqConnection;
+use observability_collector::messaging::{ChannelProvider, RabbitMqConnection};
 
 #[tokio::main]
 async fn main() {
@@ -36,6 +36,17 @@ async fn main() {
         }
     };
 
+    let channel = match ChannelProvider::create_channel(rabbitmq.get_connection()).await {
+        Ok(ch) => {
+            info!("RabbitMQ channel created and configured");
+            ch
+        }
+        Err(e) => {
+            eprintln!("Failed to create RabbitMQ channel: {}", e);
+            std::process::exit(1);
+        }
+    };
+
     info!("Ready to process telemetry events");
 
     tokio::signal::ctrl_c()
@@ -43,6 +54,9 @@ async fn main() {
         .expect("Failed to listen for shutdown signal");
 
     warn!("Shutdown signal received, cleaning up...");
+    if let Err(e) = ChannelProvider::close_channel(channel).await {
+        eprintln!("Error closing channel: {}", e);
+    }
 
     if let Err(e) = rabbitmq.shutdown().await {
         eprintln!("Error during shutdown: {}", e);
