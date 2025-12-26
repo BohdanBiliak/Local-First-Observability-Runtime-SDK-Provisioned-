@@ -26,8 +26,13 @@ docs/
 ## Quick Start
 
 ```bash
+# Setup environment
+cd infra/docker
+cp .env.example .env
+# Edit .env with secure credentials
+
 # Start infrastructure
-docker-compose -f infra/docker/docker-compose.yml up -d
+docker-compose up -d
 
 # API will be available at http://localhost:3000
 # Prometheus at http://localhost:9090
