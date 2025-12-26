@@ -25,6 +25,14 @@ impl MessageHandler for TelemetryHandler {
             "Handling telemetry message"
         );
 
+        if payload.contains("\"fail\":\"transient\"") {
+            return Err(HandlerError::Transient("Simulated transient failure".to_string()));
+        }
+
+        if payload.contains("\"fail\":\"permanent\"") {
+            return Err(HandlerError::Permanent("Simulated permanent failure".to_string()));
+        }
+
         Ok(())
     }
 }
@@ -81,6 +89,11 @@ async fn main() {
         handler,
         shutdown_clone,
     );
+
+    if let Err(e) = consumer.setup_queues().await {
+        eprintln!("Failed to setup queue topology: {}", e);
+        std::process::exit(1);
+    }
 
     let consumer_handle = tokio::spawn(async move {
         if let Err(e) = consumer.start().await {
