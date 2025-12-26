@@ -10,5 +10,12 @@ name = "collector"
 path = "src/main.rs"
 
 [dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Structured logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
 [dev-dependencies]
 
