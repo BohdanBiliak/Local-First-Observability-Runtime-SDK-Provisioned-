@@ -1,0 +1,20 @@
+{
+  "name": "@observability/contracts",
+  "version": "0.1.0",
+  "description": "Shared event contracts for observability runtime",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test"
+  },
+  "keywords": [
+    "contracts",
+    "events",
+    "observability"
+  ],
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}
