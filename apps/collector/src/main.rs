@@ -15,17 +15,48 @@ use observability_collector::metrics::{server::start_metrics_server, Metrics};
 
 struct TelemetryHandler;
 
+const EVENT_VERSION_HEADER: &str = "x-event-version";
+
 #[async_trait]
 impl MessageHandler for TelemetryHandler {
     async fn handle(&self, delivery: Delivery) -> Result<(), HandlerError> {
         let payload = String::from_utf8_lossy(&delivery.data);
         
+        // Extract version from headers
+        let version = delivery
+            .properties
+            .headers()
+            .as_ref()
+            .and_then(|headers| headers.inner().get(EVENT_VERSION_HEADER))
+            .and_then(|value| match value {
+                lapin::types::AMQPValue::LongString(s) => Some(s.to_string()),
+                _ => None,
+            })
+            .unwrap_or_else(|| "v1".to_string());
+
         info!(
             routing_key = delivery.routing_key.as_str(),
+            version = %version,
             payload_preview = %payload.chars().take(100).collect::<String>(),
             "Handling telemetry message"
         );
 
+        // Version-based routing
+        match version.as_str() {
+            "v1" => self.handle_v1(&payload),
+            _ => {
+                return Err(HandlerError::Permanent(format!(
+                    "Unsupported event version: {}. Only v1 is supported.",
+                    version
+                )));
+            }
+        }
+    }
+}
+
+impl TelemetryHandler {
+    fn handle_v1(&self, payload: &str) -> Result<(), HandlerError> {
+        // Test error simulation
         if payload.contains("\"fail\":\"transient\"") {
             return Err(HandlerError::Transient("Simulated transient failure".to_string()));
         }
@@ -34,7 +65,31 @@ impl MessageHandler for TelemetryHandler {
             return Err(HandlerError::Permanent("Simulated permanent failure".to_string()));
         }
 
-        Ok(())
+        // Parse and validate v1 schema
+        match serde_json::from_str::<serde_json::Value>(payload) {
+            Ok(json) => {
+                // Basic v1 validation
+                if !json.get("eventType").is_some() {
+                    return Err(HandlerError::Permanent(
+                        "Missing required field: eventType".to_string(),
+                    ));
+                }
+                if !json.get("payload").is_some() {
+                    return Err(HandlerError::Permanent(
+                        "Missing required field: payload".to_string(),
+                    ));
+                }
+                
+                info!("Successfully processed v1 event");
+                Ok(())
+            }
+            Err(e) => {
+                Err(HandlerError::Permanent(format!(
+                    "Invalid JSON payload: {}",
+                    e
+                )))
+            }
+        }
     }
 }
 

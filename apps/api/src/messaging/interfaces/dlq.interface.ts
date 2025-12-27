@@ -36,6 +36,8 @@ export class DLQMessageDto {
   retryCount?: number;
   headers?: Record<string, any>;
   errorReason?: string;
+  errorType?: 'transient' | 'permanent';
+  eventVersion?: string;
 }
 
 export class DLQListResponseDto {

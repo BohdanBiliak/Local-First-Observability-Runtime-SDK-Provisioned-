@@ -294,6 +294,9 @@ export class DLQService {
 
     const headers = msg.properties.headers || {};
     const retryCount = headers['x-retry-count'] || 0;
+    const errorReason = headers['x-error-reason'];
+    const errorType = headers['x-error-type'] as 'transient' | 'permanent' | undefined;
+    const eventVersion = headers['x-event-version'];
 
     return {
       id: msg.properties.messageId || `msg-${index}`,
@@ -303,7 +306,9 @@ export class DLQService {
       timestamp: msg.properties.timestamp,
       retryCount,
       headers,
-      errorReason: headers['x-error-reason'],
+      errorReason,
+      errorType,
+      eventVersion,
     };
   }
 }

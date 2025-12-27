@@ -35,15 +35,32 @@ export class RabbitEventPublisher implements IEventPublisher, OnModuleInit, OnMo
       await this.channel.assertExchange(exchange, 'topic', { durable: true });
       const buffer = Buffer.from(JSON.stringify(event));
 
+      // Extract version from event if available
+      const eventVersion = (event as any)?.eventVersion;
+      const headers: Record<string, any> = {};
+
+      if (eventVersion !== undefined) {
+        headers['x-event-version'] = `v${eventVersion}`;
+      }
+
       return new Promise((resolve, reject) => {
-        this.channel.publish(exchange, routingKey, buffer, { persistent: true }, (err) => {
-          if (err) {
-            this.logger.error(`Failed to publish to ${exchange}:${routingKey}`, err);
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
+        this.channel.publish(
+          exchange,
+          routingKey,
+          buffer,
+          {
+            persistent: true,
+            headers: Object.keys(headers).length > 0 ? headers : undefined,
+          },
+          (err) => {
+            if (err) {
+              this.logger.error(`Failed to publish to ${exchange}:${routingKey}`, err);
+              reject(err);
+            } else {
+              resolve();
+            }
+          },
+        );
       });
     } catch (error) {
       this.logger.error('Publish error:', error);

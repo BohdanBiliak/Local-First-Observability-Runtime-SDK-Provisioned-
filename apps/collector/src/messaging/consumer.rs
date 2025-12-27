@@ -10,6 +10,8 @@ use crate::metrics::Metrics;
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY_MS: u64 = 5000;
 const RETRY_HEADER: &str = "x-retry-count";
+const ERROR_REASON_HEADER: &str = "x-error-reason";
+const ERROR_TYPE_HEADER: &str = "x-error-type";
 
 pub struct Consumer {
     channel: Channel,
@@ -238,12 +240,9 @@ impl Consumer {
 
                     self.metrics.messages_dlq_total.inc();
 
-                    if let Err(e) = self
-                        .channel
-                        .basic_reject(delivery_tag, BasicRejectOptions { requeue: false })
-                        .await
-                    {
-                        error!(error = %e, delivery_tag, "Failed to reject to DLQ");
+                    // Add error metadata to headers before DLQ
+                    if let Err(e) = self.reject_to_dlq_with_reason(delivery_tag, data, properties, &err, "transient").await {
+                        error!(error = %e, delivery_tag, "Failed to reject to DLQ with metadata");
                     }
                 } else {
                     warn!(
@@ -255,7 +254,7 @@ impl Consumer {
 
                     self.metrics.messages_retried_total.inc();
 
-                    if let Err(e) = self.retry_message(delivery_tag, data, properties, retry_count).await {
+                    if let Err(e) = self.retry_message(delivery_tag, data, properties, retry_count, Some(&err)).await {
                         error!(error = %e, delivery_tag, "Failed to schedule retry");
                     }
                 }
@@ -281,12 +280,9 @@ impl Consumer {
                     "Permanent error, rejecting to DLQ"
                 );
 
-                if let Err(e) = self
-                    .channel
-                    .basic_reject(delivery_tag, BasicRejectOptions { requeue: false })
-                    .await
-                {
-                    error!(error = %e, delivery_tag, "Failed to reject message");
+                // Add error metadata to headers before DLQ
+                if let Err(e) = self.reject_to_dlq_with_reason(delivery_tag, data, properties, &err, "permanent").await {
+                    error!(error = %e, delivery_tag, "Failed to reject to DLQ with metadata");
                 }
             }
         }
@@ -298,6 +294,7 @@ impl Consumer {
         data: Vec<u8>,
         properties: BasicProperties,
         retry_count: u32,
+        error_reason: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let retry_queue = format!("{}.retry", self.queue_name);
         let new_retry_count = retry_count + 1;
@@ -311,6 +308,18 @@ impl Consumer {
             RETRY_HEADER.into(),
             lapin::types::AMQPValue::LongUInt(new_retry_count),
         );
+
+        // Store error reason for debugging
+        if let Some(reason) = error_reason {
+            headers.insert(
+                ERROR_REASON_HEADER.into(),
+                lapin::types::AMQPValue::LongString(reason.into()),
+            );
+            headers.insert(
+                ERROR_TYPE_HEADER.into(),
+                lapin::types::AMQPValue::LongString("transient".into()),
+            );
+        }
 
         let retry_properties = BasicProperties::default()
             .with_headers(headers)
@@ -336,6 +345,72 @@ impl Consumer {
             retry_count = new_retry_count,
             retry_queue = %retry_queue,
             "Message scheduled for retry"
+        );
+
+        Ok(())
+    }
+
+    async fn reject_to_dlq_with_reason(
+        &self,
+        delivery_tag: u64,
+        data: Vec<u8>,
+        properties: BasicProperties,
+        error_reason: &str,
+        error_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dlq_name = format!("{}.dlq", self.queue_name);
+
+        let mut headers = properties
+            .headers()
+            .clone()
+            .unwrap_or_else(FieldTable::default);
+
+        // Add error metadata for DLQ inspection
+        headers.insert(
+            ERROR_REASON_HEADER.into(),
+            lapin::types::AMQPValue::LongString(error_reason.into()),
+        );
+        headers.insert(
+            ERROR_TYPE_HEADER.into(),
+            lapin::types::AMQPValue::LongString(error_type.into()),
+        );
+        headers.insert(
+            "x-original-queue".into(),
+            lapin::types::AMQPValue::LongString(self.queue_name.clone().into()),
+        );
+
+        let dlq_properties = BasicProperties::default()
+            .with_headers(headers)
+            .with_delivery_mode(2)
+            .with_timestamp(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            );
+
+        // Publish to DLQ instead of reject to preserve headers
+        self.channel
+            .basic_publish(
+                "",
+                &dlq_name,
+                BasicPublishOptions::default(),
+                &data,
+                dlq_properties,
+            )
+            .await?
+            .await?;
+
+        self.channel
+            .basic_ack(delivery_tag, BasicAckOptions::default())
+            .await?;
+
+        info!(
+            delivery_tag,
+            error_type,
+            error_reason,
+            dlq = %dlq_name,
+            "Message sent to DLQ with error metadata"
         );
 
         Ok(())
